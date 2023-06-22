@@ -6,9 +6,7 @@ import { PackageData } from 'models/PackageData';
 import path = require('path');
 import * as fs from 'fs';
 import extract = require('extract-zip');
-import axios, { AxiosResponse } from 'axios';
-
-
+import fetch from 'node-fetch'
 
 
 console.log("Gathering configurations...");
@@ -24,6 +22,7 @@ const token: string = azurePAT;
 const authHandler = azdev.getPersonalAccessTokenHandler(token);
 const connection = new azdev.WebApi(orgUrl, authHandler);
 async function run() {
+    const buildApi = await connection.getBuildApi();
 
     const build: ba.IBuildApi = await connection.getBuildApi();
     const foundBuilds: Build[] = await build.getBuilds(azureProject)
@@ -88,57 +87,42 @@ async function run() {
             path.sep;
         await createDirectories([packageTempDirectory, packageReleaseFolder, packageReleaseFileNameFolder, packageTempFolderOutput])
 
-        if (!fs.existsSync(packageTempFileName)) {
-            console.log(`Downloading ${packageToDownload.DownloadURL}`);
-
-            await downloadFile(packageToDownload.DownloadURL, packageTempFileName)
-                .then(() => {
-                    console.log('File downloaded successfully');
-
-                })
-
-                .catch((error) => {
-                    console.error('Failed to download file:', error);
-                });
-
-        }
-        // await unzipFile(packageTempFileName, packageTempFolderOutput)
-        //     .then(() => {
-        //         console.log('File unzipped successfully');
-        //     })
-        //     .catch((error) => {
-        //         console.error('Failed to unzip file:', error);
-        //     });
-
+        // if (!fs.existsSync(packageTempFileName)) {
+        console.log(`Downloading ${packageToDownload.DownloadURL}`);
+        const stream = await buildApi.getArtifactContentZip(azureProject, packageToDownload.BuildID, packageToDownload.FileName);
+        const writeStream = fs.createWriteStream(packageTempFileName);
+        new Promise<void>((resolve, reject) => {
+            stream.pipe(writeStream)
+                .on('finish', resolve)
+                .on('error', reject);
+        });
 
 
     }
 
 
 }
+
+
 async function downloadFile(url: string, destinationPath: string): Promise<void> {
-    const response = await axios.get(url, {
-        responseType: 'stream',
-        headers: {
-            Authorization: `Bearer ${azurePAT}`,
+    try {
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`Failed to download file (status ${response.status}): ${response.statusText}`);
         }
 
-    });
+        const writeStream = fs.createWriteStream(destinationPath);
+        const stream = response.body.pipe(writeStream);
 
-    return new Promise<void>((resolve, reject) => {
-        const fileStream = fs.createWriteStream(destinationPath);
-        response.data.pipe(fileStream);
-
-        response.data.on('end', () => {
-            fileStream.close();
-            resolve();
+        return new Promise<void>((resolve, reject) => {
+            stream.on('finish', resolve);
+            stream.on('error', reject);
         });
-
-        response.data.on('error', (error: Error) => {
-            fileStream.close();
-            reject(error);
-        });
-    });
+    } catch (error) {
+        console.error('Error downloading artifact file:', error);
+        throw error;
+    }
 }
 async function createDirectories(directories: string[]) {
     for (const directory of directories) {
