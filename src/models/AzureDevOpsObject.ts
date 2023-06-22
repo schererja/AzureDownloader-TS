@@ -1,6 +1,6 @@
 import { AzureValue } from "./AzureValue";
 
-export interface IAzureDevOpsObject {
+export type AzureDevOpsObject = {
     count: number;
     value: AzureValue;
 
