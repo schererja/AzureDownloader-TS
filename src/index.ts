@@ -5,8 +5,8 @@ import { Build } from 'azure-devops-node-api/interfaces/BuildInterfaces';
 import { PackageData } from 'models/PackageData';
 import path = require('path');
 import * as fs from 'fs';
-import extract = require('extract-zip');
-import fetch from 'node-fetch'
+
+
 
 
 console.log("Gathering configurations...");
@@ -87,43 +87,29 @@ async function run() {
             path.sep;
         await createDirectories([packageTempDirectory, packageReleaseFolder, packageReleaseFileNameFolder, packageTempFolderOutput])
 
-        // if (!fs.existsSync(packageTempFileName)) {
-        console.log(`Downloading ${packageToDownload.DownloadURL}`);
-        const stream = await buildApi.getArtifactContentZip(azureProject, packageToDownload.BuildID, packageToDownload.FileName);
-        const writeStream = fs.createWriteStream(packageTempFileName);
-        new Promise<void>((resolve, reject) => {
-            stream.pipe(writeStream)
-                .on('finish', resolve)
-                .on('error', reject);
-        });
+
+        await downloadFile(packageToDownload, buildApi, packageTempFileName);
+
+
 
 
     }
-
-
 }
 
 
-async function downloadFile(url: string, destinationPath: string): Promise<void> {
-    try {
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            throw new Error(`Failed to download file (status ${response.status}): ${response.statusText}`);
-        }
-
-        const writeStream = fs.createWriteStream(destinationPath);
-        const stream = response.body.pipe(writeStream);
-
-        return new Promise<void>((resolve, reject) => {
-            stream.on('finish', resolve);
-            stream.on('error', reject);
-        });
-    } catch (error) {
-        console.error('Error downloading artifact file:', error);
-        throw error;
-    }
+async function downloadFile(packageToDownload: PackageData, buildApi: ba.IBuildApi, packageTempFileName: string) {
+    console.log(`Downloading ${packageToDownload.DownloadURL}`);
+    const stream = await buildApi.getArtifactContentZip(azureProject, packageToDownload.BuildID, packageToDownload.FileName);
+    const writeStream = fs.createWriteStream(packageTempFileName);
+    new Promise<void>((resolve, reject) => {
+        stream.pipe(writeStream)
+            .on('finish', () => {
+                resolve;
+            })
+            .on('error', reject);
+    });
 }
+
 async function createDirectories(directories: string[]) {
     for (const directory of directories) {
         if (!fs.existsSync(directory)) {
@@ -136,9 +122,6 @@ async function createDirectories(directories: string[]) {
     }
 }
 // Function to unzip a file
-async function unzipFile(zipPath: string, destinationPath: string): Promise<void> {
-    await extract(zipPath, { dir: destinationPath });
-}
 async function main() {
     Promise.resolve(run());
 }
